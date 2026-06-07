@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>GBI Daily Ops Report</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>*{box-sizing:border-box;margin:0;padding:0;}body{background:#0A0A0A;}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const ACCENT="#C8A96E",DARK="#0A0A0A",SURFACE="#111111",SURFACE2="#1A1A1A",
+      BORDER="#2A2A2A",TEXT="#F0EDE8",MUTED="#6B6560",GREEN="#4CAF7D",
+      RED="#E05C5C",BLUE="#4A9EDB",PURPLE="#9B7FD4",ORANGE="#E8A838";
+const PIN="2026";
+const STORAGE_KEY="gbi_ops_reports";
+
+const ROLES=[
+  {id:"laszlo",label:"Laszlo",title:"Implementation Lead — Team Report",icon:"⚙️",color:BLUE,desc:"Covers Receiving, Pick & Pack, and QA"},
+  {id:"sole",label:"Sole",title:"Supervisor Confirmation",icon:"🏭",color:ACCENT,desc:"Reviews & confirms Laszlo's report + wholesale"},
+  {id:"jonathan",label:"Jonathan",title:"Inventory Manager",icon:"📋",color:GREEN,desc:"Daily inventory report"},
+  {id:"michelle",label:"Michelle",title:"Show Completions Manager",icon:"🎬",color:RED,desc:"Daily show completions — both platforms"},
+];
+
+const ROLE_FIELDS={
+  laszlo:[
+    {section:"Morning Meeting (9:00 AM)",fields:[
+      {key:"meeting_held",label:"Morning meeting held at 9:00 AM?",type:"yesno"},
+      {key:"attendance",label:"Who was absent today?",type:"text",placeholder:"Names or NONE"},
+      {key:"open_orders_reviewed",label:"Open orders and priorities reviewed with team?",type:"yesno"},
+      {key:"inbound_prepped",label:"Team prepped for any expected inbound shipments?",type:"yesno"},
+      {key:"blockers_flagged",label:"Any blockers raised in the meeting?",type:"textarea",placeholder:"Describe or NONE"},
+    ]},
+    {section:"Receiving — Bo +1",fields:[
+      {key:"units_received",label:"Total units received today",type:"number",placeholder:"0",required:true},
+      {key:"shipments_count",label:"Number of shipments received",type:"number",placeholder:"0"},
+      {key:"bol_verified",label:"BOL verified before unloading on every shipment?",type:"yesno"},
+      {key:"count_matched_bol",label:"Inventory count matched BOL?",type:"yesno"},
+      {key:"vendor_names_removed",label:"Vendor names removed from all pallets?",type:"yesno"},
+      {key:"expiry_checked",label:"Expiration dates checked on all inbound product?",type:"yesno"},
+      {key:"expired_items",label:"Expired or near-expiry items found",type:"text",placeholder:"List SKUs/brands or NONE"},
+      {key:"damaged_items",label:"Damaged / missing / mismatched items",type:"textarea",placeholder:"Describe or NONE"},
+      {key:"driver_signed",label:"Truck driver signed delivery confirmation?",type:"yesno"},
+      {key:"handoff_jonathan",label:"Accurate counts handed off to Jonathan?",type:"yesno"},
+      {key:"new_products",label:"New products received for the first time today?",type:"yesno"},
+      {key:"samples_sent",label:"New product samples photographed and sent to sales?",type:"yesno_na"},
+      {key:"bol_filed",label:"All BOL paperwork filed?",type:"yesno"},
+      {key:"receiving_area_clean",label:"Receiving area cleaned end of day?",type:"yesno"},
+    ]},
+    {section:"Pick & Pack — Teddy / Shaq",fields:[
+      {key:"orders_assigned",label:"Orders assigned to pull today",type:"number",placeholder:"0",required:true},
+      {key:"orders_completed",label:"Orders fully completed and staged",type:"number",placeholder:"0",required:true},
+      {key:"orders_incomplete_reason",label:"Incomplete orders — reason",type:"textarea",placeholder:"Order # + reason or NONE"},
+      {key:"adjustments_submitted",label:"All adjustments submitted via IMS tablet?",type:"yesno"},
+      {key:"adjustment_details",label:"Adjustment details (missing / short items)",type:"textarea",placeholder:"SKU + qty short or NONE"},
+      {key:"pallets_staged",label:"All completed pallets staged in outbound area?",type:"yesno"},
+      {key:"packing_slips_attached",label:"Packing slips attached to all pallets?",type:"yesno"},
+      {key:"jj_notified",label:"JJ notified via Google Form for every completed order?",type:"yesno"},
+      {key:"payment_confirmed",label:"Payment confirmed before any order was released?",type:"yesno"},
+      {key:"blitz_dispatched",label:"Any deliveries dispatched to Blitz today?",type:"text",placeholder:"Order #s or NONE"},
+      {key:"workstation_clean",label:"Workstation cleaned and materials restocked?",type:"yesno"},
+    ]},
+    {section:"Quality Assurance — Dion",fields:[
+      {key:"qa_signoffs",label:"Orders QA signed off today",type:"number",placeholder:"0",required:true},
+      {key:"qa_failures",label:"QA failures today",type:"number",placeholder:"0"},
+      {key:"qa_failure_details",label:"QA failure details (team member, order #, issue)",type:"textarea",placeholder:"Describe each or NONE"},
+      {key:"vendor_names_verified",label:"Vendor name removal verified on all pallets?",type:"yesno"},
+      {key:"expiry_spot_check",label:"Expiry date spot check completed — issues found?",type:"text",placeholder:"Note items or NONE"},
+      {key:"location_codes_checked",label:"IMS location codes spot-checked against physical floor?",type:"yesno"},
+      {key:"pallet_wrap_standard",label:"All pallets packed and wrapped to standard?",type:"yesno"},
+      {key:"labels_checked",label:"Shipping labels spot-checked before dispatch?",type:"yesno"},
+      {key:"no_order_left_without_qa",label:"No orders left warehouse without QA sign-off?",type:"yesno"},
+      {key:"recurring_issues",label:"Recurring issues or SOP deviations today",type:"textarea",placeholder:"Describe patterns or NONE"},
+    ]},
+    {section:"SOP Compliance & Close",fields:[
+      {key:"sop_compliance_overall",label:"Overall SOP compliance today",type:"select",options:["✅ Full compliance — no issues","⚠️ Minor gaps — noted above","🚨 Significant violations — needs JJ attention"]},
+      {key:"process_gaps",label:"Process gaps or improvements to flag",type:"textarea",placeholder:"Describe or NONE"},
+      {key:"escalations",label:"Anything that needs JJ's attention",type:"textarea",placeholder:"Escalations, decisions needed, urgent issues. NONE if nothing."},
+    ]},
+  ],
+  sole:[
+    {section:"Team Confirmation",fields:[
+      {key:"laszlo_report_reviewed",label:"Laszlo's team report reviewed and confirmed accurate?",type:"yesno"},
+      {key:"laszlo_discrepancies",label:"Any discrepancies with what Laszlo reported vs. what you observed",type:"textarea",placeholder:"Describe or NONE"},
+      {key:"team_present",label:"All team members were present and working today?",type:"yesno"},
+      {key:"equipment_ok",label:"All equipment operational today?",type:"yesno"},
+      {key:"aisle_clear",label:"Warehouse organization and aisle clearance maintained?",type:"yesno"},
+    ]},
+    {section:"Wholesale Fulfillment",fields:[
+      {key:"wholesale_fulfilled",label:"Wholesale pallets fulfilled today",type:"number",placeholder:"0"},
+      {key:"wholesale_clients",label:"Clients fulfilled today",type:"text",placeholder:"Client names or NONE"},
+      {key:"buyer_windows_communicated",label:"Buyer pickup windows (24–48 hrs) communicated?",type:"yesno_na"},
+      {key:"invoices_on_pallets",label:"Updated invoice placed on every wholesale pallet?",type:"yesno_na"},
+      {key:"payment_before_release",label:"Payment confirmed before every wholesale order released?",type:"yesno_na"},
+      {key:"blitz_coordinated",label:"Deliveries coordinated with Blitz today",type:"text",placeholder:"Order #s or NONE"},
+    ]},
+    {section:"Daily Close",fields:[
+      {key:"outbound_staged",label:"All outbound pallets staged and ready?",type:"yesno"},
+      {key:"receiving_clean",label:"Receiving area cleaned and ready for tomorrow?",type:"yesno"},
+      {key:"discrepancy_bin",label:"Discrepancy bin checked and handed off to JJ?",type:"yesno"},
+      {key:"floor_secured",label:"Warehouse floor secured end of day?",type:"yesno"},
+      {key:"overall_day",label:"How did operations run today overall?",type:"select",options:["✅ Strong day — no major issues","⚠️ Some friction — noted below","🚨 Difficult day — JJ needs to know"]},
+      {key:"escalations",label:"Anything that needs JJ's attention",type:"textarea",placeholder:"Issues, staffing concerns, decisions needed. NONE if nothing."},
+    ]},
+  ],
+  jonathan:[
+    {section:"Morning Open",fields:[
+      {key:"inbound_checked",label:"Inbound Excel sheet checked for expected shipments?",type:"yesno"},
+      {key:"system_current",label:"IMS system up to date from prior day?",type:"yesno"},
+      {key:"pending_counts",label:"Any pending counts or handoffs from yesterday?",type:"text",placeholder:"Describe or NONE"},
+    ]},
+    {section:"Inbound Processing",fields:[
+      {key:"units_entered",label:"Units entered into IMS today",type:"number",placeholder:"0",required:true},
+      {key:"location_codes_assigned",label:"Location codes assigned to all new inventory?",type:"yesno"},
+      {key:"codes_visible_for_team",label:"All location codes visible and correct for pull team?",type:"yesno"},
+      {key:"system_matches_physical",label:"System count matches physical count after entry?",type:"yesno"},
+    ]},
+    {section:"Order Support & Close",fields:[
+      {key:"inventory_updated_as_pulled",label:"Inventory levels updated as orders were picked?",type:"yesno"},
+      {key:"low_stock_flags",label:"Low stock or out-of-stock items to flag to JJ",type:"textarea",placeholder:"List SKUs / brands or NONE"},
+      {key:"discrepancies_reconciled",label:"Discrepancies from pick team reconciled?",type:"yesno"},
+      {key:"inbound_sheet_updated",label:"Inbound Excel sheet updated for tomorrow?",type:"yesno"},
+      {key:"ims_errors",label:"IMS errors or location issues to report",type:"textarea",placeholder:"Describe or NONE"},
+      {key:"reconciliation_complete",label:"End-of-day inventory reconciliation completed?",type:"yesno"},
+    ]},
+  ],
+  michelle:[
+    {section:"Platform 1 — Show Completions",fields:[
+      {key:"p1_shows_completed",label:"Shows completed today — Platform 1",type:"number",placeholder:"0",required:true},
+      {key:"p1_manifest_complete",label:"All manifest for each completed show is fully done?",type:"yesno"},
+      {key:"p1_manifest_issues",label:"Manifest issues — which shows and what's missing",type:"textarea",placeholder:"Show name + what's incomplete, or NONE"},
+      {key:"p1_shows_in_progress",label:"Shows currently in progress on Platform 1",type:"textarea",placeholder:"List show names and current status"},
+    ]},
+    {section:"Platform 2 — Show Completions",fields:[
+      {key:"p2_shows_completed",label:"Shows completed today — Platform 2",type:"number",placeholder:"0",required:true},
+      {key:"p2_manifest_complete",label:"All manifest for each completed show is fully done?",type:"yesno"},
+      {key:"p2_manifest_issues",label:"Manifest issues — which shows and what's missing",type:"textarea",placeholder:"Show name + what's incomplete, or NONE"},
+      {key:"p2_shows_in_progress",label:"Shows currently in progress on Platform 2",type:"textarea",placeholder:"List show names and current status"},
+    ]},
+    {section:"Flashes & Shock Drops",fields:[
+      {key:"flashes_scheduled",label:"Any flashes or shock drops scheduled today?",type:"yesno"},
+      {key:"flashes_completed",label:"All scheduled flashes / shock drops executed?",type:"yesno_na"},
+      {key:"flashes_missing",label:"Any flashes or shock drops that were missed or incomplete",type:"textarea",placeholder:"Show/drop name + reason missed, or NONE"},
+    ]},
+    {section:"Issues & Close",fields:[
+      {key:"bottlenecks",label:"Issues or bottlenecks today",type:"textarea",placeholder:"Describe anything slowing completions or NONE"},
+      {key:"overall_status",label:"Overall show completion status today",type:"select",options:["✅ On track — all shows completed as planned","⚠️ Some delays — noted above","🚨 Significant gaps — JJ needs to know"]},
+      {key:"escalations",label:"Anything that needs JJ's attention",type:"textarea",placeholder:"Urgent issues, missing content, platform problems. NONE if nothing."},
+    ]},
+  ],
+};
+
+// ── Storage (localStorage) ────────────────────────────────────────────────────
+const storage={
+  getAll(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY))||[];}catch{return[];}},
+  save(record){const all=this.getAll();all.push(record);localStorage.setItem(STORAGE_KEY,JSON.stringify(all));},
+  delete(id){const all=this.getAll().filter(r=>r.id!==id);localStorage.setItem(STORAGE_KEY,JSON.stringify(all));},
+  clear(){localStorage.removeItem(STORAGE_KEY);},
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function today(){return new Date().toISOString().slice(0,10);}
+function fmtDateFull(d){if(!d)return"";const[y,m,day]=d.split("-");return`${m}/${day}/${y}`;}
+function fmtDate(d){if(!d)return"";const[y,m,day]=d.split("-");return`${m}/${day}`;}
+function dayLabel(d){return["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(d+"T12:00:00").getDay()];}
+function getWeekDates(offset=0){
+  const now=new Date();const day=now.getDay();
+  const mon=new Date(now);mon.setDate(now.getDate()-((day===0?7:day)-1)+(offset*7));
+  return Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return d.toISOString().slice(0,10);});
+}
+function weekLabel(dates){return`${fmtDateFull(dates[0])} — ${fmtDateFull(dates[6])}`;}
+function sumField(reports,roleId,field){return reports.filter(r=>r.roleId===roleId).reduce((s,r)=>s+(parseInt(r[field])||0),0);}
+function yesRate(reports,roleId,field){
+  const rel=reports.filter(r=>r.roleId===roleId&&(r[field]==="Yes"||r[field]==="No"));
+  if(!rel.length)return null;
+  return Math.round((rel.filter(r=>r[field]==="Yes").length/rel.length)*100);
+}
+function escCsv(v){return`"${String(v||"").replace(/"/g,'""')}`+'"';}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+const inp={background:SURFACE2,border:`1px solid ${BORDER}`,borderRadius:8,color:TEXT,padding:"10px 14px",fontSize:14,width:"100%",boxSizing:"border-box",outline:"none",fontFamily:"'DM Sans',sans-serif"};
+const lbl={display:"block",color:MUTED,fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6};
+const card=(x={})=>({background:SURFACE,border:`1px solid ${BORDER}`,borderRadius:12,padding:"16px 20px",...x});
+const btn=(x={})=>({border:"none",borderRadius:8,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontWeight:700,...x});
+
+// ── App ───────────────────────────────────────────────────────────────────────
+function App(){
+  const[view,setView]=React.useState("home");
+  const[role,setRole]=React.useState(null);
+  const[form,setForm]=React.useState({});
+  const[submitted,setSubmitted]=React.useState(false);
+  const[submitting,setSubmitting]=React.useState(false);
+  const[adminPin,setAdminPin]=React.useState("");
+  const[adminUnlocked,setAdminUnlocked]=React.useState(false);
+  const[pinErr,setPinErr]=React.useState(false);
+  const[reports,setReports]=React.useState([]);
+  const[adminTab,setAdminTab]=React.useState("summary");
+  const[filterRole,setFilterRole]=React.useState("All");
+  const[selected,setSelected]=React.useState(null);
+  const[weekOffset,setWeekOffset]=React.useState(0);
+  const[confirmClear,setConfirmClear]=React.useState(false);
+
+  const weekDates=getWeekDates(weekOffset);
+  const weekReports=reports.filter(r=>weekDates.includes(r.date));
+
+  function startForm(r){setRole(r);setForm({date:today(),reporter:r.label});setSubmitted(false);setView("form");}
+  function set(k,v){setForm(p=>({...p,[k]:v}));}
+  function loadReports(){setReports(storage.getAll().sort((a,b)=>new Date(b.submittedAt)-new Date(a.submittedAt)));}
+
+  function submit(){
+    setSubmitting(true);
+    try{
+      storage.save({...form,id:Date.now().toString(),roleId:role.id,roleLabel:role.title,submittedAt:new Date().toISOString()});
+      setSubmitted(true);
+    }catch{alert("Submission failed. Try again.");}
+    setSubmitting(false);
+  }
+
+  function deleteRpt(id){
+    if(!window.confirm("Delete this report?"))return;
+    storage.delete(id);setSelected(null);loadReports();
+  }
+
+  function unlock(){
+    if(adminPin===PIN){setAdminUnlocked(true);setPinErr(false);loadReports();}
+    else setPinErr(true);
+  }
+
+  function exportCSV(){
+    const data=filterRole==="All"?reports:reports.filter(r=>r.roleId===filterRole);
+    if(!data.length){alert("No reports to export.");return;}
+    // Collect all field keys across all roles
+    const allKeys=["id","roleId","roleLabel","reporter","date","submittedAt"];
+    ROLES.forEach(r=>{(ROLE_FIELDS[r.id]||[]).forEach(sec=>sec.fields.forEach(f=>{if(!allKeys.includes(f.key))allKeys.push(f.key);}));});
+    const rows=[allKeys.map(k=>escCsv(k)).join(",")];
+    data.forEach(r=>rows.push(allKeys.map(k=>escCsv(r[k]??(""))).join(",")));
+    const blob=new Blob([rows.join("\n")],{type:"text/csv"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.download=`GBI-ops-${today()}.csv`;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  }
+
+  const filtered=filterRole==="All"?reports:reports.filter(r=>r.roleId===filterRole);
+
+  // ── HOME ────────────────────────────────────────────────────────────────────
+  if(view==="home")return(
+    <div style={{minHeight:"100vh",background:DARK,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif",padding:24}}>
+      <div style={{textAlign:"center",marginBottom:40}}>
+        <div style={{fontSize:11,letterSpacing:"0.2em",color:ACCENT,textTransform:"uppercase",marginBottom:10,fontWeight:700}}>Goodbye Inventory</div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:50,color:TEXT,letterSpacing:"0.04em",lineHeight:1}}>DAILY OPS</div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:50,color:ACCENT,letterSpacing:"0.04em",lineHeight:1,marginBottom:16}}>REPORT</div>
+        <div style={{color:MUTED,fontSize:13,maxWidth:340,margin:"0 auto",lineHeight:1.6}}>Select your role below to submit your end-of-day report.</div>
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:32,flexWrap:"wrap",justifyContent:"center"}}>
+        {[{icon:"⚙️",name:"Laszlo",note:"fills team report"},{icon:"→",name:"",note:""},{icon:"🏭",name:"Sole",note:"confirms"},{icon:"→",name:"",note:""},{icon:"👤",name:"JJ",note:"reviews all"}].map((s,i)=>(
+          s.icon==="→"
+          ?<div key={i} style={{color:MUTED,fontSize:18}}>→</div>
+          :<div key={i} style={{textAlign:"center"}}>
+            <div style={{fontSize:20}}>{s.icon}</div>
+            <div style={{fontSize:12,fontWeight:700,color:TEXT}}>{s.name}</div>
+            <div style={{fontSize:10,color:MUTED}}>{s.note}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,maxWidth:480,width:"100%"}}>
+        {ROLES.map(r=>(
+          <button key={r.id} onClick={()=>startForm(r)}
+            style={{background:SURFACE,border:`2px solid ${BORDER}`,borderRadius:12,color:TEXT,padding:"20px 16px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",textAlign:"center",transition:"all 0.15s"}}
+            onMouseOver={e=>{e.currentTarget.style.border=`2px solid ${r.color}`;e.currentTarget.style.background=SURFACE2;}}
+            onMouseOut={e=>{e.currentTarget.style.border=`2px solid ${BORDER}`;e.currentTarget.style.background=SURFACE;}}>
+            <div style={{fontSize:28,marginBottom:8}}>{r.icon}</div>
+            <div style={{fontSize:15,fontWeight:700,color:r.color,marginBottom:4}}>{r.label}</div>
+            <div style={{fontSize:11,color:MUTED,lineHeight:1.4}}>{r.desc}</div>
+          </button>
+        ))}
+      </div>
+      <button onClick={()=>setView("admin")} style={{background:"none",border:"none",color:MUTED,fontSize:12,cursor:"pointer",marginTop:32,textDecoration:"underline",fontFamily:"'DM Sans',sans-serif"}}>
+        Admin View — JJ & Yuli Only
+      </button>
+    </div>
+  );
+
+  // ── FORM ────────────────────────────────────────────────────────────────────
+  if(view==="form"){
+    const sections=ROLE_FIELDS[role.id]||[];
+    if(submitted)return(
+      <div style={{minHeight:"100vh",background:DARK,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif",padding:24}}>
+        <div style={{textAlign:"center",maxWidth:380}}>
+          <div style={{fontSize:52,marginBottom:12}}>✅</div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:34,color:GREEN,letterSpacing:"0.04em",marginBottom:8}}>SUBMITTED</div>
+          {role.id==="laszlo"&&<div style={{color:ORANGE,fontSize:13,marginBottom:12,padding:"8px 16px",background:"#2A1E0A",borderRadius:8,border:`1px solid ${ORANGE}`}}>📌 Sole needs to review and confirm your report today.</div>}
+          <div style={{color:MUTED,fontSize:14,marginBottom:28}}>{role.title} report for {fmtDateFull(form.date)} saved.</div>
+          <button onClick={()=>setView("home")} style={btn({background:ACCENT,color:DARK,padding:"12px 32px",fontSize:14})}>Back to Home</button>
+        </div>
+      </div>
+    );
+    return(
+      <div style={{minHeight:"100vh",background:DARK,fontFamily:"'DM Sans',sans-serif",paddingBottom:60}}>
+        <div style={{background:SURFACE,borderBottom:`1px solid ${BORDER}`,padding:"16px 24px",position:"sticky",top:0,zIndex:10,display:"flex",alignItems:"center",gap:14}}>
+          <button onClick={()=>setView("home")} style={btn({background:"none",color:MUTED,fontSize:18,padding:0})}>←</button>
+          <div style={{fontSize:22}}>{role.icon}</div>
+          <div>
+            <div style={{fontSize:10,color:role.color,letterSpacing:"0.15em",textTransform:"uppercase",fontWeight:700}}>{role.label}</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:TEXT,letterSpacing:"0.05em"}}>DAILY REPORT</div>
+          </div>
+        </div>
+
+        {role.id==="sole"&&(
+          <div style={{background:"#0A1A2A",borderBottom:`1px solid ${BLUE}`,padding:"12px 24px",display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:16}}>ℹ️</span>
+            <span style={{color:BLUE,fontSize:13}}>Review Laszlo's report first, then complete your confirmation below.</span>
+          </div>
+        )}
+
+        <div style={{maxWidth:600,margin:"0 auto",padding:"24px 20px"}}>
+          <div style={{marginBottom:24}}>
+            <label style={lbl}>Report Date <span style={{color:ACCENT}}>*</span></label>
+            <input type="date" value={form.date||""} onChange={e=>set("date",e.target.value)} style={inp}/>
+          </div>
+          <div style={{marginBottom:32}}>
+            <label style={lbl}>Your Name <span style={{color:ACCENT}}>*</span></label>
+            <input type="text" value={form.reporter||""} onChange={e=>set("reporter",e.target.value)} style={inp} placeholder="First and last name"/>
+          </div>
+
+          {sections.map(sec=>(
+            <div key={sec.section} style={{marginBottom:32}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+                <div style={{flex:1,height:1,background:BORDER}}/>
+                <div style={{fontSize:11,fontWeight:700,color:role.color,letterSpacing:"0.12em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{sec.section}</div>
+                <div style={{flex:1,height:1,background:BORDER}}/>
+              </div>
+              {sec.fields.map(f=>(
+                <div key={f.key} style={{marginBottom:18}}>
+                  <label style={lbl}>{f.label}{f.required&&<span style={{color:ACCENT,marginLeft:4}}>*</span>}</label>
+                  {f.type==="yesno"&&(
+                    <div style={{display:"flex",gap:8}}>
+                      {["Yes","No"].map(opt=>(
+                        <button key={opt} onClick={()=>set(f.key,opt)}
+                          style={btn({flex:1,background:form[f.key]===opt?(opt==="Yes"?"#1C3E2A":"#3E1C1C"):SURFACE2,border:`1px solid ${form[f.key]===opt?(opt==="Yes"?GREEN:RED):BORDER}`,color:form[f.key]===opt?(opt==="Yes"?GREEN:RED):MUTED,padding:"10px 0",fontSize:14})}>
+                          {opt==="Yes"?"✅ Yes":"❌ No"}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {f.type==="yesno_na"&&(
+                    <div style={{display:"flex",gap:8}}>
+                      {["Yes","No","N/A"].map(opt=>(
+                        <button key={opt} onClick={()=>set(f.key,opt)}
+                          style={btn({flex:1,background:form[f.key]===opt?"#1C2A3A":SURFACE2,border:`1px solid ${form[f.key]===opt?BLUE:BORDER}`,color:form[f.key]===opt?BLUE:MUTED,padding:"10px 0",fontSize:13})}>
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {f.type==="number"&&<input type="number" min="0" placeholder={f.placeholder} value={form[f.key]||""} onChange={e=>set(f.key,e.target.value)} style={inp}/>}
+                  {f.type==="text"&&<input type="text" placeholder={f.placeholder} value={form[f.key]||""} onChange={e=>set(f.key,e.target.value)} style={inp}/>}
+                  {f.type==="textarea"&&<textarea rows={3} placeholder={f.placeholder} value={form[f.key]||""} onChange={e=>set(f.key,e.target.value)} style={{...inp,resize:"vertical",lineHeight:1.5}}/>}
+                  {f.type==="select"&&(
+                    <select value={form[f.key]||""} onChange={e=>set(f.key,e.target.value)} style={{...inp,cursor:"pointer"}}>
+                      <option value="">— Select —</option>
+                      {f.options.map(o=><option key={o} value={o}>{o}</option>)}
+                    </select>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
+
+          <button onClick={submit} disabled={submitting}
+            style={btn({background:submitting?MUTED:ACCENT,color:DARK,padding:"16px 0",width:"100%",fontSize:15,letterSpacing:"0.05em",marginTop:8,cursor:submitting?"not-allowed":"pointer"})}>
+            {submitting?"Submitting...":"Submit Daily Report →"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── ADMIN ───────────────────────────────────────────────────────────────────
+  if(view==="admin"){
+    if(!adminUnlocked)return(
+      <div style={{minHeight:"100vh",background:DARK,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif",padding:24}}>
+        <div style={{textAlign:"center",maxWidth:320,width:"100%"}}>
+          <div style={{fontSize:30,marginBottom:14}}>🔒</div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:TEXT,letterSpacing:"0.05em",marginBottom:8}}>ADMIN ACCESS</div>
+          <div style={{color:MUTED,fontSize:12,marginBottom:20}}>JJ & Yuli only</div>
+          <input type="password" placeholder="Enter PIN" value={adminPin} onChange={e=>setAdminPin(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&unlock()}
+            style={{...inp,textAlign:"center",fontSize:20,letterSpacing:"0.3em",marginBottom:10}}/>
+          {pinErr&&<div style={{color:RED,fontSize:12,marginBottom:10}}>Incorrect PIN</div>}
+          <button onClick={unlock} style={btn({background:ACCENT,color:DARK,padding:"12px 0",width:"100%",fontSize:14,marginBottom:10})}>Enter</button>
+          <button onClick={()=>setView("home")} style={btn({background:"none",color:MUTED,fontSize:12})}>← Back</button>
+        </div>
+      </div>
+    );
+
+    // Detail view
+    if(selected){
+      const r=selected;
+      const roleObj=ROLES.find(x=>x.id===r.roleId);
+      const sections=ROLE_FIELDS[r.roleId]||[];
+      return(
+        <div style={{minHeight:"100vh",background:DARK,fontFamily:"'DM Sans',sans-serif",paddingBottom:60}}>
+          <div style={{background:SURFACE,borderBottom:`1px solid ${BORDER}`,padding:"16px 24px",display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,zIndex:10}}>
+            <button onClick={()=>setSelected(null)} style={btn({background:"none",color:MUTED,fontSize:18,padding:0})}>←</button>
+            <div style={{fontSize:20}}>{roleObj?.icon}</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:10,color:roleObj?.color,letterSpacing:"0.15em",textTransform:"uppercase",fontWeight:700}}>{r.roleLabel}</div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:TEXT}}>{r.reporter} — {fmtDateFull(r.date)}</div>
+            </div>
+            <button onClick={()=>deleteRpt(r.id)} style={btn({background:"transparent",border:`1px solid ${RED}`,color:RED,padding:"8px 14px",fontSize:12})}>Delete</button>
+          </div>
+          <div style={{maxWidth:600,margin:"0 auto",padding:"24px 20px"}}>
+            {sections.map(sec=>(
+              <div key={sec.section} style={{marginBottom:28}}>
+                <div style={{fontSize:11,fontWeight:700,color:roleObj?.color,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:14,paddingBottom:8,borderBottom:`1px solid ${BORDER}`}}>{sec.section}</div>
+                {sec.fields.map(f=>(
+                  <div key={f.key} style={{marginBottom:14}}>
+                    <div style={lbl}>{f.label}</div>
+                    <div style={{color:r[f.key]?TEXT:MUTED,fontSize:14,background:SURFACE2,border:`1px solid ${BORDER}`,borderRadius:8,padding:"10px 14px",whiteSpace:"pre-wrap"}}>{r[f.key]||"—"}</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // ── WEEKLY SUMMARY ────────────────────────────────────────────────────────
+    function WeeklySummary(){
+      const wr=weekReports;
+      const submittedOn=(roleId,date)=>wr.some(r=>r.roleId===roleId&&r.date===date);
+      const soleConfirmedOn=(date)=>wr.some(r=>r.roleId==="sole"&&r.date===date&&r.laszlo_report_reviewed==="Yes");
+
+      const metrics=[
+        {label:"Units Received",value:sumField(wr,"laszlo","units_received"),icon:"📦",color:ACCENT},
+        {label:"Units in IMS",value:sumField(wr,"jonathan","units_entered"),icon:"📋",color:GREEN},
+        {label:"Orders Assigned",value:sumField(wr,"laszlo","orders_assigned"),icon:"📋",color:PURPLE},
+        {label:"Orders Completed",value:sumField(wr,"laszlo","orders_completed"),icon:"✅",color:GREEN},
+        {label:"QA Sign-offs",value:sumField(wr,"laszlo","qa_signoffs"),icon:"✅",color:ORANGE},
+        {label:"QA Failures",value:sumField(wr,"laszlo","qa_failures"),icon:"⚠️",color:RED},
+        {label:"Shows Completed",value:sumField(wr,"michelle","p1_shows_completed")+sumField(wr,"michelle","p2_shows_completed"),icon:"🎬",color:RED},
+        {label:"Wholesale Pallets",value:sumField(wr,"sole","wholesale_fulfilled"),icon:"🏭",color:ACCENT},
+      ];
+
+      const assigned=sumField(wr,"laszlo","orders_assigned");
+      const completed=sumField(wr,"laszlo","orders_completed");
+      const completionRate=assigned>0?Math.round((completed/assigned)*100):null;
+      const qaTotal=sumField(wr,"laszlo","qa_signoffs")+sumField(wr,"laszlo","qa_failures");
+      const qaPass=qaTotal>0?Math.round((sumField(wr,"laszlo","qa_signoffs")/qaTotal)*100):null;
+
+      const flagFields=["escalations","blockers_flagged","damaged_items","expired_items","adjustment_details","qa_failure_details","recurring_issues","ims_errors","low_stock_flags","laszlo_discrepancies","process_gaps","p1_manifest_issues","p2_manifest_issues","flashes_missing","bottlenecks"];
+      const allFlags=[];
+      wr.forEach(r=>{
+        const roleObj=ROLES.find(x=>x.id===r.roleId);
+        flagFields.forEach(f=>{
+          const val=r[f];
+          if(val&&val.toLowerCase()!=="none"&&val.trim()!==""){
+            allFlags.push({roleObj,reporter:r.reporter,date:r.date,field:f,value:val});
+          }
+        });
+      });
+
+      const sopChecks=[
+        {role:"laszlo",field:"bol_verified",label:"BOL Verified (Receiving)"},
+        {role:"laszlo",field:"vendor_names_removed",label:"Vendor Names Removed"},
+        {role:"laszlo",field:"expiry_checked",label:"Expiry Dates Checked"},
+        {role:"laszlo",field:"adjustments_submitted",label:"IMS Adjustments Submitted"},
+        {role:"laszlo",field:"jj_notified",label:"JJ Notified on Order Completion"},
+        {role:"laszlo",field:"payment_confirmed",label:"Payment Confirmed Before Release"},
+        {role:"laszlo",field:"no_order_left_without_qa",label:"No Orders Without QA Sign-off"},
+        {role:"michelle",field:"labels_verified",label:"Labels Verified (Shipping)"},
+        {role:"sole",field:"laszlo_report_reviewed",label:"Sole Confirmed Laszlo's Report"},
+        {role:"jonathan",field:"system_matches_physical",label:"IMS Matches Physical Count"},
+      ];
+
+      return(
+        <div style={{maxWidth:780,margin:"0 auto",padding:"24px 20px"}}>
+          {/* Week nav */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
+            <button onClick={()=>setWeekOffset(w=>w-1)} style={btn({background:SURFACE2,border:`1px solid ${BORDER}`,color:TEXT,padding:"8px 16px",fontSize:13})}>← Prev</button>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:11,color:ACCENT,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4}}>{weekOffset===0?"This Week":weekOffset===-1?"Last Week":`${Math.abs(weekOffset)} Weeks Ago`}</div>
+              <div style={{color:TEXT,fontSize:14,fontWeight:600}}>{weekLabel(weekDates)}</div>
+              <div style={{color:MUTED,fontSize:12,marginTop:2}}>{wr.length} report{wr.length!==1?"s":""} submitted</div>
+            </div>
+            <button onClick={()=>setWeekOffset(w=>Math.min(0,w+1))} disabled={weekOffset===0}
+              style={btn({background:weekOffset===0?SURFACE:SURFACE2,border:`1px solid ${BORDER}`,color:weekOffset===0?MUTED:TEXT,padding:"8px 16px",fontSize:13,cursor:weekOffset===0?"not-allowed":"pointer"})}>
+              Next →
+            </button>
+          </div>
+
+          {/* Submission tracker */}
+          <div style={{...card(),marginBottom:20}}>
+            <div style={{fontSize:11,color:ACCENT,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:16}}>Daily Submission & Confirmation Tracker</div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                <thead>
+                  <tr>
+                    <th style={{textAlign:"left",padding:"6px 8px",color:MUTED,fontWeight:600,minWidth:120}}></th>
+                    {weekDates.map(d=>(
+                      <th key={d} style={{textAlign:"center",padding:"6px 4px",color:d===today()?ACCENT:MUTED,fontWeight:d===today()?700:600,minWidth:48}}>
+                        <div>{dayLabel(d)}</div>
+                        <div style={{fontSize:10}}>{fmtDate(d)}</div>
+                      </th>
+                    ))}
+                    <th style={{textAlign:"center",padding:"6px 4px",color:MUTED,fontWeight:600}}>5-Day</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ROLES.map(r=>{
+                    const counts=weekDates.map(d=>submittedOn(r.id,d));
+                    const total=counts.filter((_,i)=>i<5).filter(Boolean).length;
+                    return(
+                      <tr key={r.id}>
+                        <td style={{padding:"8px 8px",color:r.color,fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>{r.icon} {r.label}</td>
+                        {counts.map((sub,i)=>(
+                          <td key={i} style={{textAlign:"center",padding:"8px 4px"}}>
+                            {weekDates[i]>today()
+                              ?<span style={{color:BORDER}}>·</span>
+                              :sub?<span style={{color:GREEN,fontSize:15}}>✓</span>
+                              :<span style={{color:i<5?"#E05C5C55":BORDER,fontSize:15}}>○</span>}
+                          </td>
+                        ))}
+                        <td style={{textAlign:"center",padding:"8px 4px"}}>
+                          <span style={{fontSize:13,fontWeight:700,color:total===5?GREEN:total>0?ORANGE:RED}}>{total}/5</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr style={{borderTop:`1px dashed ${BORDER}`}}>
+                    <td style={{padding:"8px 8px",color:MUTED,fontSize:12,fontStyle:"italic"}}>↳ Sole confirmed Laszlo</td>
+                    {weekDates.map((d,i)=>(
+                      <td key={i} style={{textAlign:"center",padding:"8px 4px"}}>
+                        {d>today()?<span style={{color:BORDER}}>·</span>
+                        :soleConfirmedOn(d)?<span style={{color:GREEN,fontSize:13}}>✓</span>
+                        :<span style={{color:i<5?"#E05C5C33":BORDER,fontSize:13}}>○</span>}
+                      </td>
+                    ))}
+                    <td style={{textAlign:"center",padding:"8px 4px",color:MUTED,fontSize:12}}>
+                      {weekDates.filter((d,i)=>i<5&&d<=today()&&soleConfirmedOn(d)).length}/
+                      {weekDates.filter((d,i)=>i<5&&d<=today()).length}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Key numbers */}
+          <div style={{fontSize:11,color:ACCENT,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:12}}>Weekly Operations Numbers</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:10}}>
+            {metrics.map(m=>(
+              <div key={m.label} style={{...card(),textAlign:"center",padding:"14px 10px"}}>
+                <div style={{fontSize:18,marginBottom:4}}>{m.icon}</div>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:30,color:m.value>0?m.color:MUTED,letterSpacing:"0.04em",lineHeight:1}}>{m.value}</div>
+                <div style={{fontSize:11,color:MUTED,marginTop:4,lineHeight:1.3}}>{m.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:24}}>
+            <div style={{...card(),display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:11,color:MUTED,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>Pick & Pack Completion</div>
+                <div style={{fontSize:13,color:MUTED}}>{completed} of {assigned} orders</div>
+              </div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:36,color:completionRate===null?MUTED:completionRate>=95?GREEN:completionRate>=80?ORANGE:RED}}>
+                {completionRate===null?"—":completionRate+"%"}
+              </div>
+            </div>
+            <div style={{...card(),display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:11,color:MUTED,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>QA Pass Rate</div>
+                <div style={{fontSize:13,color:MUTED}}>{sumField(wr,"laszlo","qa_failures")} failures this week</div>
+              </div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:36,color:qaPass===null?MUTED:qaPass>=95?GREEN:qaPass>=80?ORANGE:RED}}>
+                {qaPass===null?"—":qaPass+"%"}
+              </div>
+            </div>
+          </div>
+
+          {/* SOP Compliance */}
+          <div style={{...card(),marginBottom:24}}>
+            <div style={{fontSize:11,color:ACCENT,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:16}}>SOP Compliance This Week</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {sopChecks.map(c=>{
+                const rate=yesRate(weekReports,c.role,c.field);
+                const roleObj=ROLES.find(r=>r.id===c.role);
+                return(
+                  <div key={c.label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:SURFACE2,borderRadius:8}}>
+                    <div>
+                      <div style={{fontSize:10,color:roleObj?.color,fontWeight:700,marginBottom:2}}>{roleObj?.icon} {roleObj?.label}</div>
+                      <div style={{fontSize:12,color:TEXT}}>{c.label}</div>
+                    </div>
+                    <div style={{fontSize:16,fontWeight:700,color:rate===null?MUTED:rate===100?GREEN:rate>=80?ORANGE:RED,minWidth:40,textAlign:"right"}}>
+                      {rate===null?"—":rate+"%"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Flags */}
+          <div style={{fontSize:11,color:RED,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:12}}>⚠ Flags & Escalations ({allFlags.length})</div>
+          {allFlags.length===0
+            ?<div style={{...card(),color:GREEN,fontSize:14,textAlign:"center",padding:24}}>✅ No flags or escalations this week.</div>
+            :allFlags.map((e,i)=>(
+              <div key={i} style={{...card(),borderLeft:`3px solid ${e.roleObj?.color||RED}`,marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:11,color:e.roleObj?.color,fontWeight:700,textTransform:"uppercase"}}>{e.roleObj?.icon} {e.roleObj?.label}</span>
+                    <span style={{fontSize:11,color:MUTED}}>— {e.reporter}</span>
+                  </div>
+                  <span style={{fontSize:11,color:MUTED}}>{fmtDateFull(e.date)}</span>
+                </div>
+                <div style={{fontSize:11,color:MUTED,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>{e.field.replace(/_/g," ")}</div>
+                <div style={{fontSize:14,color:TEXT,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{e.value}</div>
+              </div>
+            ))
+          }
+          <div style={{marginTop:28,textAlign:"center"}}>
+            <button onClick={loadReports} style={btn({background:"none",border:`1px solid ${BORDER}`,color:MUTED,padding:"8px 20px",fontSize:12})}>↻ Refresh</button>
+          </div>
+        </div>
+      );
+    }
+
+    // ── DAILY LIST ──────────────────────────────────────────────────────────
+    function DailyList(){
+      return(
+        <div style={{maxWidth:700,margin:"0 auto",padding:"24px 20px"}}>
+          <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap",alignItems:"center"}}>
+            <button onClick={()=>setFilterRole("All")} style={btn({background:filterRole==="All"?ACCENT:"transparent",border:`1px solid ${filterRole==="All"?ACCENT:BORDER}`,color:filterRole==="All"?DARK:MUTED,padding:"6px 12px",fontSize:12})}>All</button>
+            {ROLES.map(r=>(
+              <button key={r.id} onClick={()=>setFilterRole(r.id)}
+                style={btn({background:filterRole===r.id?r.color+"22":"transparent",border:`1px solid ${filterRole===r.id?r.color:BORDER}`,color:filterRole===r.id?r.color:MUTED,padding:"6px 12px",fontSize:12})}>
+                {r.icon} {r.label}
+              </button>
+            ))}
+            <button onClick={exportCSV} style={btn({marginLeft:"auto",background:"none",border:`1px solid ${BORDER}`,color:MUTED,padding:"6px 12px",fontSize:12})}>⬇ CSV</button>
+            <button onClick={loadReports} style={btn({background:"none",border:`1px solid ${BORDER}`,color:MUTED,padding:"6px 12px",fontSize:12})}>↻</button>
+          </div>
+          {filtered.length===0?<div style={{color:MUTED,textAlign:"center",padding:40}}>No reports yet.</div>
+          :filtered.map(r=>{
+            const roleObj=ROLES.find(x=>x.id===r.roleId);
+            const flagged=(r.escalations&&r.escalations.toLowerCase()!=="none"&&r.escalations.trim()!=="")
+              ||(r.qa_failures&&parseInt(r.qa_failures)>0)
+              ||(r.orders_delayed&&parseInt(r.orders_delayed)>0);
+            const needsConfirm=r.roleId==="laszlo"&&!reports.some(x=>x.roleId==="sole"&&x.date===r.date&&x.laszlo_report_reviewed==="Yes");
+            return(
+              <div key={r.id} onClick={()=>setSelected(r)}
+                style={{...card(),borderLeft:`3px solid ${flagged?RED:needsConfirm?ORANGE:(roleObj?.color||BORDER)}`,marginBottom:12,cursor:"pointer"}}
+                onMouseOver={e=>e.currentTarget.style.background=SURFACE2}
+                onMouseOut={e=>e.currentTarget.style.background=SURFACE}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                      <span style={{fontSize:11,color:roleObj?.color,fontWeight:700,textTransform:"uppercase"}}>{roleObj?.icon} {r.roleId}</span>
+                      {flagged&&<span style={{fontSize:10,color:RED,fontWeight:700}}>⚠ FLAG</span>}
+                      {needsConfirm&&<span style={{fontSize:10,color:ORANGE,fontWeight:700}}>⏳ AWAITING SOLE</span>}
+                    </div>
+                    <div style={{color:TEXT,fontWeight:700,fontSize:15,marginBottom:2}}>{r.reporter}</div>
+                    <div style={{color:MUTED,fontSize:12}}>{fmtDateFull(r.date)}</div>
+                  </div>
+                  <div style={{textAlign:"right",color:MUTED,fontSize:12}}>
+                    {r.roleId==="laszlo"&&<><div>{r.units_received||0} units received</div><div>{r.orders_completed||0}/{r.orders_assigned||0} orders</div><div>{r.qa_signoffs||0} QA · {r.qa_failures||0} fails</div></>}
+                    {r.roleId==="sole"&&<div>{r.wholesale_fulfilled||0} wholesale pallets</div>}
+                    {r.roleId==="jonathan"&&<div>{r.units_entered||0} in IMS</div>}
+                    {r.roleId==="michelle"&&<><div>{(parseInt(r.p1_shows_completed)||0)+(parseInt(r.p2_shows_completed)||0)} shows completed</div><div style={{fontSize:11}}>{r.flashes_missing&&r.flashes_missing.toLowerCase()!=="none"?<span style={{color:RED}}>⚠ Flash/drop issue</span>:"✓ No flash issues"}</div></>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    return(
+      <div style={{minHeight:"100vh",background:DARK,fontFamily:"'DM Sans',sans-serif",paddingBottom:60}}>
+        {/* Confirm clear dialog */}
+        {confirmClear&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}}>
+            <div style={{background:SURFACE,border:`1px solid ${BORDER}`,borderRadius:14,padding:"28px 24px",width:300,textAlign:"center"}}>
+              <div style={{fontSize:24,marginBottom:10}}>⚠️</div>
+              <div style={{color:TEXT,fontWeight:700,marginBottom:8}}>Clear All Data?</div>
+              <div style={{color:MUTED,fontSize:13,marginBottom:20}}>This permanently deletes all reports. Cannot be undone.</div>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setConfirmClear(false)} style={btn({flex:1,background:SURFACE2,border:`1px solid ${BORDER}`,color:TEXT,padding:"10px 0",fontSize:13})}>Cancel</button>
+                <button onClick={()=>{storage.clear();setReports([]);setConfirmClear(false);}} style={btn({flex:1,background:RED,color:"white",padding:"10px 0",fontSize:13})}>Clear All</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div style={{background:SURFACE,borderBottom:`1px solid ${BORDER}`,padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <button onClick={()=>{setAdminUnlocked(false);setView("home");}} style={btn({background:"none",color:MUTED,fontSize:18,padding:0})}>←</button>
+            <div>
+              <div style={{fontSize:10,color:ACCENT,letterSpacing:"0.15em",textTransform:"uppercase",fontWeight:700}}>Admin — JJ & Yuli</div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:TEXT,letterSpacing:"0.05em"}}>OPS DASHBOARD</div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            {[{id:"summary",label:"📊 Weekly"},{id:"daily",label:"📋 Daily"}].map(t=>(
+              <button key={t.id} onClick={()=>setAdminTab(t.id)}
+                style={btn({background:adminTab===t.id?ACCENT:"transparent",border:`1px solid ${adminTab===t.id?ACCENT:BORDER}`,color:adminTab===t.id?DARK:MUTED,padding:"7px 14px",fontSize:12})}>
+                {t.label}
+              </button>
+            ))}
+            <button onClick={()=>setConfirmClear(true)} style={btn({background:"transparent",border:`1px solid ${BORDER}`,color:MUTED,padding:"7px 12px",fontSize:12})} title="Clear all data">🗑</button>
+          </div>
+        </div>
+        {adminTab==="summary"?<WeeklySummary/>:<DailyList/>}
+      </div>
+    );
+  }
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
