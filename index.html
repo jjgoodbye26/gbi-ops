@@ -18,6 +18,8 @@ const ACCENT="#C8A96E",DARK="#0A0A0A",SURFACE="#111111",SURFACE2="#1A1A1A",
       RED="#E05C5C",BLUE="#4A9EDB",PURPLE="#9B7FD4",ORANGE="#E8A838";
 const PIN="2026";
 const STORAGE_KEY="gbi_ops_reports";
+// ── Paste your Apps Script Web App URL here after deploying ──────────────────
+const API_URL = localStorage.getItem("gbi_api_url") || "";
 
 const ROLES=[
   {id:"laszlo",label:"Laszlo",title:"Implementation Lead — Team Report",icon:"⚙️",color:BLUE,desc:"Covers Receiving, Pick & Pack, and QA"},
@@ -154,12 +156,44 @@ const ROLE_FIELDS={
   ],
 };
 
-// ── Storage (localStorage) ────────────────────────────────────────────────────
+// ── Storage — Google Sheets backend with localStorage fallback ────────────────
 const storage={
-  getAll(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY))||[];}catch{return[];}},
-  save(record){const all=this.getAll();all.push(record);localStorage.setItem(STORAGE_KEY,JSON.stringify(all));},
-  delete(id){const all=this.getAll().filter(r=>r.id!==id);localStorage.setItem(STORAGE_KEY,JSON.stringify(all));},
-  clear(){localStorage.removeItem(STORAGE_KEY);},
+  // LOCAL fallback
+  _localGetAll(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY))||[];}catch{return[];}},
+  _localSave(record){const all=this._localGetAll();all.push(record);localStorage.setItem(STORAGE_KEY,JSON.stringify(all));},
+  _localDelete(id){const all=this._localGetAll().filter(r=>r.id!==id);localStorage.setItem(STORAGE_KEY,JSON.stringify(all));},
+  _localClear(){localStorage.removeItem(STORAGE_KEY);},
+
+  // REMOTE via Apps Script
+  async getAll(){
+    if(!API_URL) return this._localGetAll();
+    try{
+      const res=await fetch(`${API_URL}?action=list`);
+      const data=await res.json();
+      return Array.isArray(data)?data:[];
+    }catch{return this._localGetAll();}
+  },
+  async save(record){
+    this._localSave(record); // always cache locally too
+    if(!API_URL) return;
+    try{
+      await fetch(API_URL,{method:"POST",mode:"no-cors",body:JSON.stringify({...record,action:"save"})});
+    }catch{}
+  },
+  async delete(id){
+    this._localDelete(id);
+    if(!API_URL) return;
+    try{
+      await fetch(`${API_URL}?action=delete&id=${encodeURIComponent(id)}`);
+    }catch{}
+  },
+  async clear(){
+    this._localClear();
+    if(!API_URL) return;
+    try{
+      await fetch(`${API_URL}?action=clear`);
+    }catch{}
+  },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -203,26 +237,34 @@ function App(){
   const[selected,setSelected]=React.useState(null);
   const[weekOffset,setWeekOffset]=React.useState(0);
   const[confirmClear,setConfirmClear]=React.useState(false);
+  const[loading,setLoading]=React.useState(false);
+  const[showApiSettings,setShowApiSettings]=React.useState(false);
+  const[apiInput,setApiInput]=React.useState(localStorage.getItem("gbi_api_url")||"");
 
   const weekDates=getWeekDates(weekOffset);
   const weekReports=reports.filter(r=>weekDates.includes(r.date));
 
   function startForm(r){setRole(r);setForm({date:today(),reporter:r.label});setSubmitted(false);setView("form");}
   function set(k,v){setForm(p=>({...p,[k]:v}));}
-  function loadReports(){setReports(storage.getAll().sort((a,b)=>new Date(b.submittedAt)-new Date(a.submittedAt)));}
+  async function loadReports(){
+    setLoading(true);
+    const all=await storage.getAll();
+    setReports(all.sort((a,b)=>new Date(b.submittedAt)-new Date(a.submittedAt)));
+    setLoading(false);
+  }
 
-  function submit(){
+  async function submit(){
     setSubmitting(true);
     try{
-      storage.save({...form,id:Date.now().toString(),roleId:role.id,roleLabel:role.title,submittedAt:new Date().toISOString()});
+      await storage.save({...form,id:Date.now().toString(),roleId:role.id,roleLabel:role.title,submittedAt:new Date().toISOString()});
       setSubmitted(true);
     }catch{alert("Submission failed. Try again.");}
     setSubmitting(false);
   }
 
-  function deleteRpt(id){
+  async function deleteRpt(id){
     if(!window.confirm("Delete this report?"))return;
-    storage.delete(id);setSelected(null);loadReports();
+    await storage.delete(id);setSelected(null);loadReports();
   }
 
   function unlock(){
@@ -647,7 +689,8 @@ function App(){
             <button onClick={exportCSV} style={btn({marginLeft:"auto",background:"none",border:`1px solid ${BORDER}`,color:MUTED,padding:"6px 12px",fontSize:12})}>⬇ CSV</button>
             <button onClick={loadReports} style={btn({background:"none",border:`1px solid ${BORDER}`,color:MUTED,padding:"6px 12px",fontSize:12})}>↻</button>
           </div>
-          {filtered.length===0?<div style={{color:MUTED,textAlign:"center",padding:40}}>No reports yet.</div>
+          {loading?<div style={{color:MUTED,textAlign:"center",padding:40}}>Loading...</div>
+          :filtered.length===0?<div style={{color:MUTED,textAlign:"center",padding:40}}>No reports yet.</div>
           :filtered.map(r=>{
             const roleObj=ROLES.find(x=>x.id===r.roleId);
             const flagged=(r.escalations&&r.escalations.toLowerCase()!=="none"&&r.escalations.trim()!=="")
@@ -685,6 +728,33 @@ function App(){
 
     return(
       <div style={{minHeight:"100vh",background:DARK,fontFamily:"'DM Sans',sans-serif",paddingBottom:60}}>
+        {/* API Settings dialog */}
+        {showApiSettings&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}}>
+            <div style={{background:SURFACE,border:`1px solid ${BORDER}`,borderRadius:14,padding:"28px 24px",width:"100%",maxWidth:480}}>
+              <div style={{fontSize:11,color:ACCENT,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Google Sheets Connection</div>
+              <div style={{color:TEXT,fontWeight:700,fontSize:16,marginBottom:6}}>Paste your Apps Script URL</div>
+              <div style={{color:MUTED,fontSize:12,marginBottom:16,lineHeight:1.6}}>Deploy your Apps Script as a Web App, then paste the URL here. All future submissions will save to your Google Sheet and sync across all devices.</div>
+              <input
+                value={apiInput}
+                onChange={e=>setApiInput(e.target.value)}
+                placeholder="https://script.google.com/macros/s/..."
+                style={{...inp,marginBottom:12,fontSize:12}}
+              />
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setShowApiSettings(false)} style={btn({flex:1,background:SURFACE2,border:`1px solid ${BORDER}`,color:TEXT,padding:"10px 0",fontSize:13})}>Cancel</button>
+                <button onClick={()=>{
+                  const url=apiInput.trim();
+                  if(url){localStorage.setItem("gbi_api_url",url);}
+                  else{localStorage.removeItem("gbi_api_url");}
+                  window.location.reload();
+                }} style={btn({flex:1,background:ACCENT,color:DARK,padding:"10px 0",fontSize:13,fontWeight:700})}>Save & Reconnect</button>
+              </div>
+              {apiInput&&<button onClick={()=>{setApiInput("");localStorage.removeItem("gbi_api_url");window.location.reload();}} style={btn({background:"none",color:RED,fontSize:12,marginTop:12,width:"100%"})}>Disconnect Google Sheets</button>}
+            </div>
+          </div>
+        )}
+
         {/* Confirm clear dialog */}
         {confirmClear&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}}>
@@ -694,7 +764,7 @@ function App(){
               <div style={{color:MUTED,fontSize:13,marginBottom:20}}>This permanently deletes all reports. Cannot be undone.</div>
               <div style={{display:"flex",gap:10}}>
                 <button onClick={()=>setConfirmClear(false)} style={btn({flex:1,background:SURFACE2,border:`1px solid ${BORDER}`,color:TEXT,padding:"10px 0",fontSize:13})}>Cancel</button>
-                <button onClick={()=>{storage.clear();setReports([]);setConfirmClear(false);}} style={btn({flex:1,background:RED,color:"white",padding:"10px 0",fontSize:13})}>Clear All</button>
+                <button onClick={async()=>{await storage.clear();setReports([]);setConfirmClear(false);}} style={btn({flex:1,background:RED,color:"white",padding:"10px 0",fontSize:13})}>Clear All</button>
               </div>
             </div>
           </div>
@@ -715,6 +785,7 @@ function App(){
                 {t.label}
               </button>
             ))}
+            <button onClick={()=>setShowApiSettings(true)} style={btn({background:API_URL?"#1C3E2A":"transparent",border:`1px solid ${API_URL?GREEN:BORDER}`,color:API_URL?GREEN:MUTED,padding:"7px 12px",fontSize:12})} title="Google Sheets connection">{API_URL?"🟢 Sheets":"📊 Connect Sheets"}</button>
             <button onClick={()=>setConfirmClear(true)} style={btn({background:"transparent",border:`1px solid ${BORDER}`,color:MUTED,padding:"7px 12px",fontSize:12})} title="Clear all data">🗑</button>
           </div>
         </div>
