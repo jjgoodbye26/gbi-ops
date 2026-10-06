@@ -1,8 +1,8 @@
 //+------------------------------------------------------------------+
-//| NDR_Dashboard2.mq5  v5                                          |
+//| NDR_Dashboard2.mq5  v5.1                                        |
 //+------------------------------------------------------------------+
 #property copyright   "NDR Trading System"
-#property version     "5.00"
+#property version     "5.10"
 #property indicator_chart_window
 #property indicator_buffers 0
 #property indicator_plots   0
@@ -36,6 +36,16 @@ input bool InpValidOnly = false;
 
 input group "== Sensitivity =="
 input int  InpTolPts = 0;
+
+input group "== Type-1 PDC filter =="
+//   Only accept a PDC that is a Type-1 candle:
+//   • engulf — body closes beyond the PRIOR day's body (opposite colour), OR
+//   • past wick — closes above the prior day's HIGH (bull) / below its LOW (bear)
+input bool InpType1Only = true;   // Show only Type-1 engulf / past-wick setups
+
+input group "== Chart shift =="
+input bool   InpShiftChart = true;   // Push price off the right edge (room for current day)
+input double InpShiftPct   = 15;     // Gap size, % of chart width (10-50)
 
 input group "== Telegram alerts =="
 input bool   InpTgEnabled  = true;                                          // Enable Telegram alerts
@@ -95,6 +105,14 @@ int OnInit()
       g_p[i].lvl=0; g_p[i].h4t=0;
       g_p[i].pdcH=0; g_p[i].pdcL=0;
       g_prevSt[i]=EINV;
+   }
+   // Shift price away from the right edge so today's candle stays visible
+   // even with a symbol-changer overlay docked on the right of the chart
+   if(InpShiftChart)
+   {
+      ChartSetInteger(0, CHART_SHIFT, true);
+      ChartSetDouble (0, CHART_SHIFT_SIZE,
+                      MathMax(10.0, MathMin(50.0, InpShiftPct)));
    }
    Evaluate();
    Draw();
@@ -185,6 +203,44 @@ void EvalPair(int idx)
    bool bull=(pC>pO);
    datetime pS=iTime(sym,PERIOD_D1,ps),pE=iTime(sym,PERIOD_D1,ps-1);
    if(pS==0||pE==0) return;
+
+   // ── Type-1 filter ──────────────────────────────────────────────
+   // The PDC must either ENGULF the prior day's body (opposite colour)
+   // or CLOSE beyond the prior day's high/low wick.
+   if(InpType1Only)
+   {
+      // Find the valid trading day BEFORE the PDC (skip weekends for FX)
+      int p2=-1;
+      for(int d=ps+1; d<=ps+7; d++)
+      {
+         datetime t2=iTime(sym,PERIOD_D1,d); if(t2==0) break;
+         if(!is24_7)
+         {
+            MqlDateTime dt2; TimeToStruct(t2,dt2);
+            if(dt2.day_of_week==0||dt2.day_of_week==6) continue;
+         }
+         if(iOpen(sym,PERIOD_D1,d)==0 || iHigh(sym,PERIOD_D1,d)==0) continue;
+         p2=d; break;
+      }
+      if(p2<0) return;
+
+      double o2=iOpen (sym,PERIOD_D1,p2), c2=iClose(sym,PERIOD_D1,p2);
+      double h2=iHigh (sym,PERIOD_D1,p2), l2=iLow  (sym,PERIOD_D1,p2);
+      double bodyHi2=MathMax(o2,c2), bodyLo2=MathMin(o2,c2);
+
+      bool engulf, pastWick;
+      if(bull)
+      {
+         engulf   = (c2<o2) && (pC>bodyHi2);   // prior day bearish, body engulfed
+         pastWick = (pC>h2);                   // closed above prior day's HIGH
+      }
+      else
+      {
+         engulf   = (c2>o2) && (pC<bodyLo2);   // prior day bullish, body engulfed
+         pastWick = (pC<l2);                   // closed below prior day's LOW
+      }
+      if(!engulf && !pastWick) return;         // not Type-1 → no setup
+   }
 
    // H12
    int hb=iBars(sym,PERIOD_H12); if(hb<4) return;
